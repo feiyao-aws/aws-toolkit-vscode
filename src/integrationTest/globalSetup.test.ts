@@ -12,19 +12,6 @@ import { activateExtension } from './integrationTestsUtilities'
 
 // ASSUMPTION: Tests are not run concurrently
 
-const oldConsoleLog = console.log
-let silenceLogMessages = 0
-console.log = function(...args: any[]) {
-    // python extension is noisy, it uses console.log() and there are no plans
-    // to address it: https://github.com/microsoft/vscode-python/issues/8527
-    const msg: string = typeof args === 'string' ? args : (args[0] as string)
-    if (msg && msg.includes('Info Python Extension')) {
-        silenceLogMessages += 1
-        return
-    }
-    return oldConsoleLog(...args)
-}
-
 let timeout: { id: NodeJS.Timeout | undefined; name: string | undefined } = { id: undefined, name: undefined }
 function clearTestTimeout() {
     if (timeout.id !== undefined) {
@@ -64,7 +51,6 @@ before(async () => {
 })
 // After all tests end, once only:
 after(async () => {
-    console.log(`silenced ${silenceLogMessages} log messages`)
     console.log('globalSetup: after()')
 })
 
@@ -83,6 +69,5 @@ afterEach(function() {
 //     }),
 //     // After all tests end, once only:
 //     afterAll(async () => {
-//         console.log(`silenced ${silenceLogMessages} log messages`)
 //     }),
 // }
