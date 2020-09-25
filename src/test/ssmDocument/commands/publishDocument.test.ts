@@ -22,6 +22,7 @@ import { MockSsmDocumentClient } from '../../shared/clients/mockClients'
 import * as picker from '../../../shared/ui/picker'
 import { FakeAwsContext, FakeRegionProvider } from '../../utilities/fakeAwsContext'
 import { anything, mock, instance, when, capture, verify } from '../../utilities/mockito'
+import { create } from 'lodash'
 
 let sandbox: sinon.SinonSandbox
 
@@ -156,11 +157,21 @@ describe('publishDocument', async () => {
     let textDocument: vscode.TextDocument
     let result: SSM.CreateDocumentResult | SSM.UpdateDocumentResult
     let client: SsmDocumentClient
-    let channelOutput: string[] = []
+    let fakeCreateRequest: SSM.CreateDocumentRequest = {
+        Content: 'MockDocumentTextOne',
+        DocumentFormat: 'JSON',
+        DocumentType: 'Automation',
+        Name: 'test',
+    }
+    let fakeUpdateRequest: SSM.UpdateDocumentRequest = {
+        Content: 'MockDocumentTextOne',
+        DocumentFormat: 'JSON',
+        DocumentVersion: '$LATEST',
+        Name: 'test',
+    }
 
     beforeEach(async () => {
         sandbox = sinon.createSandbox()
-        channelOutput = []
 
         wizardResponse = {
             PublishSsmDocAction: 'Update',
@@ -181,13 +192,25 @@ describe('publishDocument', async () => {
 
     describe('createDocument', async () => {
         it('createDocument API returns successfully', async () => {
-            client = mock()
-            when(client.createDocument(anything())).thenResolve()
+            client = new MockSsmDocumentClient(
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                req => {
+                    return new Promise<SSM.CreateDocumentResult>((resolve, reject) => {
+                        resolve(result)
+                    })
+                },
+                undefined,
+                undefined
+            )
+            const createSpy = sandbox.spy(client, 'createDocument')
             await publish.createDocument(wizardResponse, textDocument, 'us-east-1', client)
-            // eslint-disable-next-line @typescript-eslint/unbound-method
-            const [createDocumentRequest] = capture(client.createDocument).last()
-            assert.strictEqual(createDocumentRequest.Name, 'test')
-            assert.strictEqual(createDocumentRequest.DocumentType, 'Automation')
+            assert(createSpy.calledOnce)
+            assert(createSpy.calledWith(fakeCreateRequest))
         })
 
         it('createDocument API failed', async () => {
@@ -206,8 +229,13 @@ describe('publishDocument', async () => {
                 undefined,
                 undefined
             )
-
+            const createErrorSpy = sandbox.spy(vscode.window, 'showErrorMessage')
             await publish.createDocument(wizardResponse, textDocument, 'us-east-1', client)
+            assert(createErrorSpy.calledOnce)
+            assert(
+                createErrorSpy.getCall(0).args[0],
+                "Failed to create Systems Manager Document 'test'. \nCreate Error"
+            )
         })
     })
 
@@ -227,9 +255,11 @@ describe('publishDocument', async () => {
                     })
                 }
             )
+            const updateSpy = sandbox.spy(client, 'updateDocument')
             sandbox.stub(ssmUtils, 'showConfirmationMessage').returns(Promise.resolve(false))
-            // const window = new FakeWindow({ message: { warningSelection: 'No' } })
             await publish.updateDocument(wizardResponse, textDocument, 'us-east-1', client)
+            assert(updateSpy.calledOnce)
+            assert(updateSpy.calledWith(fakeUpdateRequest))
         })
 
         it('updateDocument API failed', async () => {
@@ -247,8 +277,14 @@ describe('publishDocument', async () => {
                     })
                 }
             )
+            const updateErrorSpy = sandbox.spy(vscode.window, 'showErrorMessage')
             sandbox.stub(ssmUtils, 'showConfirmationMessage').returns(Promise.resolve(false))
             await publish.updateDocument(wizardResponse, textDocument, 'us-east-1', client)
+            assert(updateErrorSpy.calledOnce)
+            assert(
+                updateErrorSpy.getCall(0).args[0],
+                "Failed to update Systems Manager Document 'test'. \nUpdate Error"
+            )
         })
     })
 })

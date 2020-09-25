@@ -105,12 +105,13 @@ export async function createDocument(
 
         const createResult = await client.createDocument(request)
         logger.info(`Created Systems Manager Document successfully ${stringify(createResult.DocumentDescription)}`)
+        vscode.window.showInformationMessage(`Created Systems Manager Document ${wizardResponse.name} successfully`)
     } catch (err) {
         const error = err as Error
         logger.error(`Failed to create Systems Manager Document '${wizardResponse.name}'. %0`, error)
         result = 'Failed'
         vscode.window.showErrorMessage(
-            `Failed to create Systems Manager Document '${wizardResponse.name}'. ${error.message}`
+            `Failed to create Systems Manager Document '${wizardResponse.name}'. \n${error.message}`
         )
     } finally {
         telemetry.recordSsmPublishDocument({ result: result, ssmOperation: ssmOperation })
@@ -141,7 +142,7 @@ export async function updateDocument(
         const updateResult = await client.updateDocument(request)
 
         logger.info(`Updated Systems Manager Document successfully ${stringify(updateResult.DocumentDescription)}`)
-        vscode.window.showInformationMessage(`Updated Systems Manager Document successfully`)
+        vscode.window.showInformationMessage(`Updated Systems Manager Document ${wizardResponse.name} successfully`)
 
         const isConfirmed = await showConfirmationMessage(
             {
@@ -173,7 +174,9 @@ export async function updateDocument(
                     `Failed to update Systems Manager Document '${wizardResponse.name}' default version. %0`,
                     err as Error
                 )
-                vscode.window.showErrorMessage(`Updated Systems Manager Document default version successfully`)
+                vscode.window.showErrorMessage(
+                    `Failed to update Systems Manager Document '${wizardResponse.name}' default version.`
+                )
             }
         }
     } catch (err) {
@@ -181,7 +184,7 @@ export async function updateDocument(
         logger.error(`Failed to update Systems Manager Document '${wizardResponse.name}'. %0`, error)
         result = 'Failed'
         vscode.window.showErrorMessage(
-            `Failed to update Systems Manager Document '${wizardResponse.name}'. ${error.message}`
+            `Failed to update Systems Manager Document '${wizardResponse.name}'. \n${error.message}`
         )
     } finally {
         telemetry.recordSsmPublishDocument({ result: result, ssmOperation: ssmOperation })
