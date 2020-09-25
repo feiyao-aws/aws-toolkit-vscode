@@ -9,8 +9,6 @@ import * as assert from 'assert'
 import * as sinon from 'sinon'
 import * as vscode from 'vscode'
 
-import { stringify } from 'querystring'
-
 import { SsmDocumentClient } from '../../../shared/clients/ssmDocumentClient'
 import { ToolkitClientBuilder } from '../../../shared/clients/toolkitClientBuilder'
 import { ext } from '../../../shared/extensionGlobals'
@@ -23,6 +21,7 @@ import {
 import { MockSsmDocumentClient } from '../../shared/clients/mockClients'
 import * as picker from '../../../shared/ui/picker'
 import { FakeAwsContext, FakeRegionProvider } from '../../utilities/fakeAwsContext'
+import { anything, mock, instance, when, capture, verify } from '../../utilities/mockito'
 
 let sandbox: sinon.SinonSandbox
 
@@ -61,16 +60,6 @@ const mockDoc: vscode.TextDocument = {
     validateRange: sinon.spy(),
 }
 
-const mockChannel: vscode.OutputChannel = {
-    name: 'channel',
-    append: sinon.spy(),
-    appendLine: sinon.spy(),
-    clear: sinon.spy(),
-    show: sinon.spy(),
-    hide: sinon.spy(),
-    dispose: sinon.spy(),
-}
-
 describe('publishSSMDocument', async () => {
     let sandbox = sinon.createSandbox()
     const fakeAwsContext = new FakeAwsContext()
@@ -88,14 +77,12 @@ describe('publishSSMDocument', async () => {
         description: 'us-east-1',
     }
 
-    let channel: vscode.OutputChannel
     let textDocument: vscode.TextDocument
     let apiCalled: string
 
     beforeEach(async () => {
         sandbox = sinon.createSandbox()
         apiCalled = ''
-        channel = { ...mockChannel }
         textDocument = { ...mockDoc }
         sandbox.stub(vscode.window, 'activeTextEditor').value({
             document: textDocument,
@@ -124,7 +111,7 @@ describe('publishSSMDocument', async () => {
             })
         )
 
-        await publish.publishSSMDocument(fakeAwsContext, fakeRegionProvider, channel)
+        await publish.publishSSMDocument(fakeAwsContext, fakeRegionProvider)
 
         sinon.assert.calledOnce(wizardStub)
         assert.strictEqual(apiCalled, 'createDocument')
@@ -138,7 +125,7 @@ describe('publishSSMDocument', async () => {
             })
         )
         sandbox.stub(ssmUtils, 'showConfirmationMessage').returns(Promise.resolve(false))
-        await publish.publishSSMDocument(fakeAwsContext, fakeRegionProvider, channel)
+        await publish.publishSSMDocument(fakeAwsContext, fakeRegionProvider)
 
         sinon.assert.calledOnce(wizardStub)
         assert.strictEqual(apiCalled, 'updateDocument')
@@ -165,7 +152,6 @@ describe('publishSSMDocument', async () => {
 })
 
 describe('publishDocument', async () => {
-    let channel: vscode.OutputChannel
     let wizardResponse: PublishSSMDocumentWizardResponse
     let textDocument: vscode.TextDocument
     let result: SSM.CreateDocumentResult | SSM.UpdateDocumentResult
@@ -187,12 +173,6 @@ describe('publishDocument', async () => {
                 Name: 'testName',
             },
         }
-        channel = {
-            ...mockChannel,
-            appendLine: sandbox.stub().callsFake(value => {
-                channelOutput.push(value)
-            }),
-        }
     })
 
     afterEach(() => {
@@ -201,30 +181,13 @@ describe('publishDocument', async () => {
 
     describe('createDocument', async () => {
         it('createDocument API returns successfully', async () => {
-            client = new MockSsmDocumentClient(
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                req => {
-                    return new Promise<SSM.CreateDocumentResult>((resolve, reject) => {
-                        resolve(result)
-                    })
-                },
-                undefined,
-                undefined
-            )
-
-            await publish.createDocument(wizardResponse, textDocument, channel, 'us-east-1', client)
-
-            assert.strictEqual(channelOutput.length, 4)
-            assert.strictEqual(
-                channelOutput[1],
-                `Successfully created and uploaded Systems Manager Document '${wizardResponse.name}'`
-            )
-            assert.strictEqual(channelOutput[2], stringify(result.DocumentDescription))
+            client = mock()
+            when(client.createDocument(anything())).thenResolve()
+            await publish.createDocument(wizardResponse, textDocument, 'us-east-1', client)
+            // eslint-disable-next-line @typescript-eslint/unbound-method
+            const [createDocumentRequest] = capture(client.createDocument).last()
+            assert.strictEqual(createDocumentRequest.Name, 'test')
+            assert.strictEqual(createDocumentRequest.DocumentType, 'Automation')
         })
 
         it('createDocument API failed', async () => {
@@ -244,13 +207,7 @@ describe('publishDocument', async () => {
                 undefined
             )
 
-            await publish.createDocument(wizardResponse, textDocument, channel, 'us-east-1', client)
-
-            assert.strictEqual(channelOutput.length, 3)
-            assert.strictEqual(
-                channelOutput[1],
-                `There was an error creating and uploading Systems Manager Document '${wizardResponse.name}', check logs for more information.`
-            )
+            await publish.createDocument(wizardResponse, textDocument, 'us-east-1', client)
         })
     })
 
@@ -272,14 +229,7 @@ describe('publishDocument', async () => {
             )
             sandbox.stub(ssmUtils, 'showConfirmationMessage').returns(Promise.resolve(false))
             // const window = new FakeWindow({ message: { warningSelection: 'No' } })
-            await publish.updateDocument(wizardResponse, textDocument, channel, 'us-east-1', client)
-
-            assert.strictEqual(channelOutput.length, 4)
-            assert.strictEqual(
-                channelOutput[1],
-                `Successfully updated Systems Manager Document '${wizardResponse.name}'`
-            )
-            assert.strictEqual(channelOutput[2], stringify(result.DocumentDescription))
+            await publish.updateDocument(wizardResponse, textDocument, 'us-east-1', client)
         })
 
         it('updateDocument API failed', async () => {
@@ -298,13 +248,7 @@ describe('publishDocument', async () => {
                 }
             )
             sandbox.stub(ssmUtils, 'showConfirmationMessage').returns(Promise.resolve(false))
-            await publish.updateDocument(wizardResponse, textDocument, channel, 'us-east-1', client)
-
-            assert.strictEqual(channelOutput.length, 3)
-            assert.strictEqual(
-                channelOutput[1],
-                `There was an error updating Systems Manager Document '${wizardResponse.name}', check logs for more information.`
-            )
+            await publish.updateDocument(wizardResponse, textDocument, 'us-east-1', client)
         })
     })
 })
